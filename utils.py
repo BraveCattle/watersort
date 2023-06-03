@@ -10,7 +10,7 @@ def load_puzzle(file):
         with open(file, "r") as f:
             for line in f:
                 col_str = line.rstrip("\n").replace(" ", "").split(',')
-                res.append([Color[col].value for col in col_str])
+                res.append([Color[col].value for col in col_str][::-1])
     except Exception as e:
         print(e)
 
@@ -55,11 +55,17 @@ def move_tube(tube, dir):
 
 def add_anime_down(idx, tube_anime):
     if not NO_ANIME:
-        tube_anime[idx] = (TUBE_ANIME_TIME, 1)
+        if tube_anime[idx][0] > 0:
+            tube_anime[idx] = (TUBE_ANIME_TIME-tube_anime[idx][0], 1)
+        else:
+            tube_anime[idx] = (TUBE_ANIME_TIME, 1)
 
 def add_anime_up(idx, tube_anime):
     if not NO_ANIME:
-        tube_anime[idx] = (TUBE_ANIME_TIME, -1)
+        if tube_anime[idx][0] > 0:
+            tube_anime[idx] = (TUBE_ANIME_TIME-tube_anime[idx][0], -1)
+        else:
+            tube_anime[idx] = (TUBE_ANIME_TIME, -1)
 
 # play num_frame frames of anime for tube
 def tube_play_anime(tube, idx, tube_anime, num_frame):
@@ -127,6 +133,9 @@ def check_end(tubes):
     return True
 
 def revoke(game):
+    if len(game.record) == 0:
+        print("Cannot revoke!")
+        return None
     print("rovoking from tube:", game.record[-1][1], "to tube:", game.record[-1][0])
     force_pour(game.record[-1][1], game.record[-1][0], game.record[-1][2], game.tubes)
     game.record.pop(-1)

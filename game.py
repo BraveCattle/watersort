@@ -36,13 +36,20 @@ class Game():
         self.window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 
         self.colors = load_puzzle(puzzle_file)
+        # print(self.colors)
 
-        self.num_tubes = 5
-        self.tubes = [Tube(200, 30, self.colors[0]), Tube(400, 30, self.colors[1]),
-                Tube(600, 30, self.colors[2]), Tube(300, 330, []), Tube(500, 330, [])]
+        self.tubes = [Tube(90, 30, self.colors[0]), Tube(200, 30, self.colors[1]), 
+                      Tube(310, 30, self.colors[2]), Tube(420, 30, self.colors[3]),
+                      Tube(530, 30, self.colors[4]), Tube(640, 30, self.colors[5]),
+                      Tube(750, 30, self.colors[6]),
+                      Tube(90, 330, self.colors[7]), Tube(200, 330, self.colors[8]), 
+                      Tube(310, 330, self.colors[9]), Tube(420, 330, self.colors[10]),
+                      Tube(530, 330, self.colors[11]), Tube(640, 330, []),
+                      Tube(750, 330, [])]
+        self.num_tubes = len(self.tubes)
         self.record = []
 
-        self.buttons = [Button(800, 60, "./sources/revoke.png", revoke)]
+        self.buttons = [Button(880, 60, "./sources/revoke.png", revoke)]
         
         # tube_anime: index -> (remaining frames, move direction/distance)
         self.tube_anime = {i:(0, 0) for i in range(len(self.tubes))}
