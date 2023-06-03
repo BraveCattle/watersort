@@ -1,26 +1,14 @@
 import pygame
-
-WINDOW_WIDTH = 1000
-WINDOW_HEIGHT = 600
-
-TUBE_WIDTH = 100
-TUBE_HEIGHT = 250
-TUBE_THICKNESS = 5
-COLOR_HEIGHT = int(2*(TUBE_HEIGHT-TUBE_THICKNESS*2)/9)
-TUBE_MARGIN = TUBE_HEIGHT-TUBE_THICKNESS*2-4*COLOR_HEIGHT
-TUBE_MOVE = 20
-
-RED = (255, 0, 0)
-GREEN = (0, 255, 0)
-BLUE = (0, 0, 255)
-GREY = (163, 163, 163)
-BLACK = (0, 0, 0)
+import argparse
+from utils import *
+from game_config import *
+from color import Color
+import time
 
 class Tube(pygame.sprite.Sprite):
     def __init__(self, pos_x, pos_y, contains):
         super().__init__()
         self.rect = (pos_x, pos_y, TUBE_WIDTH, TUBE_HEIGHT)
-        self.thickness = TUBE_THICKNESS
         self.contains = contains
 
     def full(self):
@@ -33,148 +21,182 @@ class Tube(pygame.sprite.Sprite):
             return True
         return False
 
-# check if a position is in a tube
-def inside(pos, tube):
-    if pos[0] < tube.rect[0] or pos[0] > tube.rect[0]+tube.rect[2]:
-        return False
-    if pos[1] < tube.rect[1] or pos[1] > tube.rect[1]+tube.rect[3]:
-        return False
-    return True
+class Button(pygame.sprite.Sprite):
+    def __init__(self, pos_x, pos_y, source, func):
+        super().__init__()
+        self.rect = (pos_x, pos_y, BUTTON_WIDTH, BUTTON_HEIGHT)
+        self.image = pygame.image.load(source).convert_alpha()
+        self.image = pygame.transform.smoothscale(self.image, (self.rect[2], self.rect[3]))
+        self.func = func
 
-def draw_tube(tube, window):
-    # draw the tube
-    pygame.draw.rect(window, GREY, tube.rect, tube.thickness)
+class Game():
+    def __init__(self, puzzle_file = 'puzzle_state.txt'):
+        pygame.init()
+        pygame.display.set_caption('water sort')
+        self.window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
 
-    # draw the colors in the tube
-    for idx, col in enumerate(tube.contains):
-        col_rect = (tube.rect[0]+tube.thickness,
-                    tube.rect[1]+TUBE_MARGIN+TUBE_THICKNESS+(3-idx)*COLOR_HEIGHT,
-                    TUBE_WIDTH-2*TUBE_THICKNESS,
-                    COLOR_HEIGHT)
-        pygame.draw.rect(window, col, col_rect, 0)
+        self.colors = load_puzzle(puzzle_file)
 
-def play_anime_down(idx, tube_anime):
-    tube_anime[idx] = (TUBE_MOVE, 1)
+        self.num_tubes = 5
+        self.tubes = [Tube(200, 30, self.colors[0]), Tube(400, 30, self.colors[1]),
+                Tube(600, 30, self.colors[2]), Tube(300, 330, []), Tube(500, 330, [])]
+        self.record = []
 
-def play_anime_up(idx, tube_anime):
-    tube_anime[idx] = (TUBE_MOVE, -1)
+        self.buttons = [Button(800, 60, "./sources/revoke.png", revoke)]
+        
+        # tube_anime: index -> (remaining frames, move direction/distance)
+        self.tube_anime = {i:(0, 0) for i in range(len(self.tubes))}
+        self.holding_tube = None
+        self.holding_tube_idx = -1
+        self.click_tube = None
+        self.click_tube_idx = -1
+        self.click_button = None
+        self.game_end = False
 
-def move_tube(tube, dir):
-    tube.rect = (tube.rect[0], tube.rect[1]+dir, tube.rect[2], tube.rect[3])
+    def run(self):
+        running = True
+        while running:
+            # play the remaining animes
+            play_anime(self.tubes, self.tube_anime)
 
-def check_pour(tube1, tube2):
-    if tube2.full() or tube1.empty():
-        return False
-    if tube2.empty():
-        return True
-    if tube1.contains[-1] == tube2.contains[-1]:
-        return True
-    return False
+            # if game ends
+            if check_end(self.tubes):
+                self.game_end = True
+                win_prompt(self)
 
-def pour(tube1, tube2):
-    for t in range(4):
-        if tube2.empty():
-            if tube1.empty():
-                break
-            else:
-                tube2.contains.append(tube1.contains[-1])
-                tube1.contains.pop(-1)
-        else:
-            if tube1.empty():
-                break
-            if tube2.contains[-1] == tube1.contains[-1] and len(tube2.contains) < 4:
-                tube2.contains.append(tube1.contains[-1])
-                tube1.contains.pop(-1)
+            # get the events
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
 
-def check_end(tubes):
-    for tube in tubes:
-        if not (tube.full() or tube.empty()):
-            return False
-        for col_idx in range(len(tube.contains)-1):
-            if tube.contains[col_idx] != tube.contains[col_idx+1]:
-                return False
-    return True
+                if self.game_end:
+                    continue
 
-def main():
-    pygame.init()
-    pygame.display.set_caption('water sort')
-    window = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+                if event.type == pygame.MOUSEBUTTONDOWN:
+                    self.click_tube = None
+                    self.click_tube_idx = -1
+                    self.click_button = None
+                    for idx, tube in enumerate(self.tubes):
+                        if inside(event.pos, tube):
+                            self.click_tube, self.click_tube_idx = tube, idx
+                    for button in self.buttons:
+                        if inside(event.pos, button):
+                            self.click_button = button
 
-    colors = [[RED, GREEN, GREEN, BLUE], 
-              [BLUE, GREEN, RED, RED],
-              [RED, BLUE, GREEN, BLUE]]
-    tubes = [Tube(200, 30, colors[0]), Tube(400, 30, colors[1]),
-             Tube(600, 30, colors[2]), Tube(300, 330, []), Tube(500, 330, [])]
-    
-    running = True
-    # tube_anime: index -> (remaining frames, move direction)
-    tube_anime = {i:(0, 0) for i in range(len(tubes))}
-    holding_tube = None
-    holding_tube_idx = -1
-    click_tube = None
-    click_tube_idx = -1
-    game_end = False
+                if event.type == pygame.MOUSEBUTTONUP:
+                    # run the button command if clicked the button
+                    if self.click_button and inside(event.pos, self.click_button):
+                        self.click_button.func(self)
 
-    while running:
-        for idx, tube in enumerate(tubes):
-            if tube_anime[idx][0] > 0:
-                move_tube(tube, tube_anime[idx][1])
-                tube_anime[idx] = (tube_anime[idx][0]-1, tube_anime[idx][1])
+                    # run tube interactions if clicked the tubes
+                    if self.click_tube and inside(event.pos, self.click_tube):
+                        # print("clicked tube", click_tube_idx+1)
 
-        if check_end(tubes):
-            game_end = True
-            font_obj = pygame.font.Font('freesansbold.ttf', 32)
-            text_surf = font_obj.render('You win!!!', True, RED, GREY)
-            text_rect_obj = text_surf.get_rect()
-            text_rect_obj.center = (WINDOW_WIDTH/2, WINDOW_HEIGHT/2)
-            window.blit(text_surf, text_rect_obj)
-            pygame.display.update()
+                        # cannot move if the tube is playing anime
+                        if self.tube_anime[idx][0] > 0:
+                            continue
 
-        for event in pygame.event.get():
-            if event.type == pygame.QUIT:
-                running = False
+                        # move the tube downward if it is held
+                        if self.click_tube == self.holding_tube:
+                            self.holding_tube = None
+                            self.holding_tube_idx = -1
+                            add_anime_down(self.click_tube_idx, self.tube_anime)
 
-            if game_end:
+                        else:
+                            if self.holding_tube:
+                                volumn = pour(self.holding_tube, self.click_tube)
+                                if volumn > 0:
+                                    self.record.append((self.holding_tube_idx, self.click_tube_idx, volumn))
+                                add_anime_down(self.holding_tube_idx, self.tube_anime)
+                                self.holding_tube = None
+                                self.holding_tube_idx = -1
+                            else:
+                                self.holding_tube = self.click_tube
+                                self.holding_tube_idx = self.click_tube_idx
+                                add_anime_up(self.click_tube_idx, self.tube_anime)
+
+            if self.game_end:
                 continue
 
-            if event.type == pygame.MOUSEBUTTONDOWN:
-                click_tube = None
-                for idx, tube in enumerate(tubes):
-                    if inside(event.pos, tube):
-                        click_tube, click_tube_idx = tube, idx
+            # draw the new window
+            draw_window(self)
+    
+    def play_solution(self, solution_file):
+        sol = []
+        try:
+            with open(solution_file, "r") as f:
+                for line in f:
+                    src, dst = line.rstrip('\n').split(' ')
+                    sol.append((int(src), int(dst)))
+        except Exception as e:
+            print("File error!")
+        
+        start_time = time.time()
+        round = 0
+        interval = 0.8
 
-            if event.type == pygame.MOUSEBUTTONUP:
-                if click_tube and inside(event.pos, click_tube):
-                    print("clicked tube", click_tube_idx+1)
-                    # cannot move if the tube is playing anime
-                    if tube_anime[idx][0] > 0:
-                        continue
+        move_up, move_pour, move_down = False, False, False
+        anime_ongoing = False
+        running = True
 
-                    # move the tube downward if it is held
-                    if click_tube == holding_tube:
-                        holding_tube = None
-                        holding_tube_idx = -1
-                        play_anime_down(click_tube_idx, tube_anime)
+        frame = 0
 
-                    else:
-                        if holding_tube:
-                            pour(holding_tube, click_tube)
-                            play_anime_down(holding_tube_idx, tube_anime)
-                            holding_tube = None
-                            holding_tube_idx = -1
-                        else:
-                            holding_tube = click_tube
-                            holding_tube_idx = click_tube_idx
-                            play_anime_up(click_tube_idx, tube_anime)
+        while running:
+            # frame += 1
+            # print(frame)
 
-        if game_end:
-            continue
+            cur_time = time.time()
 
-        window.fill(BLACK)
-        for tube in tubes:
-            draw_tube(tube, window)
-        pygame.display.flip()
+            if check_end(self.tubes):
+                self.game_end = True
+                win_prompt(self)
+
+            for event in pygame.event.get():
+                if event.type == pygame.QUIT:
+                    running = False
+
+            if self.game_end:
+                continue
+
+            if round < len(sol) and cur_time-start_time > interval*round:
+                # print("round:", round)
+                if not (move_up or move_pour or move_down):
+                    add_anime_up(sol[round][0], self.tube_anime)
+                    anime_ongoing = True
+                    move_up = True
+
+                if move_up and (not anime_ongoing) and (not move_down):
+                    pour(self.tubes[sol[round][0]], self.tubes[sol[round][1]])
+                    move_pour = True
+
+                if move_up and move_pour and (not move_down):
+                    add_anime_down(sol[round][0], self.tube_anime)
+                    anime_ongoing = True
+                    move_down = True
+
+            anime_ongoing = play_anime(self.tubes, self.tube_anime)
+            if (not anime_ongoing) and move_up and move_pour and move_down:                
+                move_up, move_pour, move_down = False, False, False
+                round += 1
+            draw_window(self)
 
 
 if __name__ == '__main__':
-    main()
+    parser = argparse.ArgumentParser(description='Play the water sort game.')
+    parser.add_argument('-p', '--puzzle',
+                        help='Specify the puzzle state file')
+    parser.add_argument('-a', '--auto',
+                        help='Play the solution automatically')
+    
+    args = parser.parse_args()
+
+    if args.puzzle:
+        print(args.puzzle)
+        myGame = Game(args.puzzle)
+    else:
+        myGame = Game()
+    
+    if args.auto:
+        myGame.play_solution(args.auto)
+    else:
+        myGame.run()
